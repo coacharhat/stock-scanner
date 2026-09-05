@@ -112,4 +112,3 @@ if st.sidebar.button("Run Scanner"):
         st.dataframe(result_df, use_container_width=True)
     else:
         st.warning("No stocks matched your current criteria. Try loosening the filters.")
-App.py.txt
