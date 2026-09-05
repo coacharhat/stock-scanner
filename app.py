@@ -28,12 +28,12 @@ include_options = st.sidebar.checkbox("Fetch Options Data", value=True)
 min_total_oi = st.sidebar.number_input("Min Total Open Interest", min_value=0, value=10000, step=5000)
 
 def calculate_rsi(series, period=14):
-delta = series.diff()
-gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-rs = gain / loss
-rsi = 100 - (100 / (1 + rs))
-return rsi.fillna(50)
+  delta = series.diff()
+  gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+  loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+  rs = gain / loss
+  rsi = 100 - (100 / (1 + rs))
+  return rsi.fillna(50)
 
 if st.sidebar.button("Run Scanner"):
 results = []
