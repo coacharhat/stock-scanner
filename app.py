@@ -1,64 +1,91 @@
-import streamlit as st
-import yfinance as yf
+import os
+import time
 import pandas as pd
+import pandas_ta as ta  # High-performance technical analysis library
+import yfinance as yf
 
-def scan_stock(ticker_symbol):
+def calculate_rsi(ticker_symbol):
+    """Calculates the current 14-day Relative Strength Index (RSI)."""
     try:
-        # 1. Fetch historical data for RSI calculation (need at least 30-40 days)
         ticker = yf.Ticker(ticker_symbol)
-        hist = ticker.history(period="3mo")
+        # Fetching 3 months of historical daily candles to properly seed the RSI
+        df = ticker.history(period="3mo", interval="1d")
         
-        if len(hist) < 14:
-            return None
-        
-        # Calculate 14-day RSI using pandas_ta
-        hist.ta.rsi(length=14, append=True)
-        current_rsi = hist['RSI_14'].iloc[-1]
-        
-        # Filter 1: RSI under 30
-        if current_rsi >= 30 or pd.isna(current_rsi):
+        if df.empty or len(df) < 20:
             return None
             
-        # 2. Fetch Options Chain Data for Open Interest
-        total_open_interest = 0
-        expirations = ticker.options # Gets all available expiration dates
+        # Compute RSI using pandas_ta implementation
+        df.ta.rsi(close="Close", length=14, append=True)
         
-        # To keep your Streamlit app fast, only check the first 3 closest expiration dates
-        for date in expirations[:3]:
-            opt_chain = ticker.option_chain(date)
-            
-            # Sum up Open Interest from both Calls and Puts
-            calls_oi = opt_chain.calls['openInterest'].sum()
-            puts_oi = opt_chain.puts['openInterest'].sum()
-            
-            total_open_interest += (calls_oi + puts_oi)
-            
-        # Filter 2: Cumulative Open Interest above 10,000
-        if total_open_interest > 10000:
-            return {
-                "Ticker": ticker_symbol,
-                "RSI": round(current_rsi, 2),
-                "Total_OI": int(total_open_interest)
-            }
-            
-    except Exception as e:
-        # Avoid crashing the Streamlit UI loop if a specific ticker fails
+        # Extract the most recent calculation row
+        latest_rsi = df['RSI_14'].iloc[-1]
+        return latest_rsi if not pd.isna(latest_rsi) else None
+    except Exception:
         return None
-    
-    return None
 
-# Quick UI implementation example
-st.title("Oversold & Highly Liquid Scanner")
-test_tickers = ["CSCO", "BA", "BRK-B", "AAPL", "URI"]
-
-if st.button("Run Custom Scan"):
-    results = []
-    for t in test_tickers:
-        res = scan_stock(t)
-        if res:
-            results.append(res)
+def calculate_open_interest(ticker_symbol, max_expirations=3):
+    """Aggregates the sum of Open Interest from upcoming options expiration cycles."""
+    try:
+        ticker = yf.Ticker(ticker_symbol)
+        expiration_dates = ticker.options
+        
+        if not expiration_dates:
+            return 0
             
-    if results:
-        st.write(pd.DataFrame(results))
+        total_oi = 0
+        # Sampling the closest expiration periods maximizes execution speed
+        for date in expiration_dates[:max_expirations]:
+            chain = ticker.option_chain(date)
+            
+            # Aggregate OI values while cleaning NaN instances
+            calls_oi = chain.calls['openInterest'].dropna().sum()
+            puts_oi = chain.puts['openInterest'].dropna().sum()
+            
+            total_oi += (calls_oi + puts_oi)
+            # Modest rest window to protect your system from API rate limits
+            time.sleep(0.1)
+            
+        return int(total_oi)
+    except Exception:
+        return 0
+
+def run_screener(ticker_universe):
+    """Executes filtering rules across target stock lists."""
+    qualified_matches = []
+    
+    print(f"🔄 Scanning {len(ticker_universe)} symbols for RSI < 30 and OI > 10,000...")
+    
+    for symbol in ticker_universe:
+        # Optimization Guardrail: Calculate technical metrics first to filter noise 
+        rsi = calculate_rsi(symbol)
+        
+        if rsi is not None and rsi < 30:
+            print(f"🎯 Match found on Momentum: {symbol} (RSI: {rsi:.2f}). Extracting OI...")
+            
+            # Fetch options density only for technical qualifiers
+            open_interest = calculate_open_interest(symbol)
+            
+            if open_interest >= 10000:
+                qualified_matches.append({
+                    "Ticker": symbol,
+                    "RSI_14": round(rsi, 2),
+                    "Open_Interest": open_interest
+                })
+                print(f"✅ Added: {symbol} matches all parameters.")
+        
+        # Base latency buffer to prevent cloud server environment bans
+        time.sleep(0.5)
+        
+    return pd.DataFrame(qualified_matches)
+
+if __name__ == "__main__":
+    # Sample liquid subset list for testing parameters
+    test_universe = ["CSCO", "BA", "BRK-B", "URI", "HON", "MMM", "AAPL", "MSFT"]
+    
+    results_df = run_screener(test_universe)
+    
+    print("\n📊 Final Scanner Results:")
+    if not results_df.empty:
+        print(results_df.to_string(index=False))
     else:
-        st.write("No stocks met the criteria right now.")
+        print("No securities currently match the technical boundaries.")
