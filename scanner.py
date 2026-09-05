@@ -1,30 +1,39 @@
 import os
 import time
 import pandas as pd
-import pandas_ta as ta  # High-performance technical analysis library
 import yfinance as yf
 
 def calculate_rsi(ticker_symbol):
-    """Calculates the current 14-day Relative Strength Index (RSI)."""
+    """Calculates 14-day RSI using pure pandas to prevent installation errors."""
     try:
         ticker = yf.Ticker(ticker_symbol)
-        # Fetching 3 months of historical daily candles to properly seed the RSI
         df = ticker.history(period="3mo", interval="1d")
         
-        if df.empty or len(df) < 20:
+        if df.empty or len(df) < 15:
             return None
             
-        # Compute RSI using pandas_ta implementation
-        df.ta.rsi(close="Close", length=14, append=True)
+        # Calculate price changes
+        delta = df['Close'].diff()
         
-        # Extract the most recent calculation row
-        latest_rsi = df['RSI_14'].iloc[-1]
+        # Separate gains and losses
+        gain = (delta.where(delta > 0, 0)).copy()
+        loss = (-delta.where(delta < 0, 0)).copy()
+        
+        # Calculate Wilder's Exponential Moving Average for RSI
+        avg_gain = gain.ewm(com=13, adjust=False).mean()
+        avg_loss = loss.ewm(com=13, adjust=False).mean()
+        
+        # Calculate RS and RSI
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs))
+        
+        latest_rsi = rsi.iloc[-1]
         return latest_rsi if not pd.isna(latest_rsi) else None
     except Exception:
         return None
 
 def calculate_open_interest(ticker_symbol, max_expirations=3):
-    """Aggregates the sum of Open Interest from upcoming options expiration cycles."""
+    """Aggregates Open Interest from the closest options chains."""
     try:
         ticker = yf.Ticker(ticker_symbol)
         expiration_dates = ticker.options
@@ -33,16 +42,11 @@ def calculate_open_interest(ticker_symbol, max_expirations=3):
             return 0
             
         total_oi = 0
-        # Sampling the closest expiration periods maximizes execution speed
         for date in expiration_dates[:max_expirations]:
             chain = ticker.option_chain(date)
-            
-            # Aggregate OI values while cleaning NaN instances
             calls_oi = chain.calls['openInterest'].dropna().sum()
             puts_oi = chain.puts['openInterest'].dropna().sum()
-            
             total_oi += (calls_oi + puts_oi)
-            # Modest rest window to protect your system from API rate limits
             time.sleep(0.1)
             
         return int(total_oi)
@@ -50,19 +54,14 @@ def calculate_open_interest(ticker_symbol, max_expirations=3):
         return 0
 
 def run_screener(ticker_universe):
-    """Executes filtering rules across target stock lists."""
     qualified_matches = []
-    
-    print(f"🔄 Scanning {len(ticker_universe)} symbols for RSI < 30 and OI > 10,000...")
+    print(f"🔄 Scanning {len(ticker_universe)} symbols...")
     
     for symbol in ticker_universe:
-        # Optimization Guardrail: Calculate technical metrics first to filter noise 
         rsi = calculate_rsi(symbol)
         
         if rsi is not None and rsi < 30:
-            print(f"🎯 Match found on Momentum: {symbol} (RSI: {rsi:.2f}). Extracting OI...")
-            
-            # Fetch options density only for technical qualifiers
+            print(f"🎯 RSI Alert: {symbol} is at {rsi:.2f}")
             open_interest = calculate_open_interest(symbol)
             
             if open_interest >= 10000:
@@ -71,21 +70,13 @@ def run_screener(ticker_universe):
                     "RSI_14": round(rsi, 2),
                     "Open_Interest": open_interest
                 })
-                print(f"✅ Added: {symbol} matches all parameters.")
+                print(f"✅ Match Added: {symbol}")
         
-        # Base latency buffer to prevent cloud server environment bans
-        time.sleep(0.5)
+        time.sleep(0.5) # Protects API from rate limits
         
     return pd.DataFrame(qualified_matches)
 
 if __name__ == "__main__":
-    # Sample liquid subset list for testing parameters
-    test_universe = ["CSCO", "BA", "BRK-B", "URI", "HON", "MMM", "AAPL", "MSFT"]
-    
+    test_universe = ["CSCO", "BA", "BRK-B", "URI", "HON", "MMM"]
     results_df = run_screener(test_universe)
-    
-    print("\n📊 Final Scanner Results:")
-    if not results_df.empty:
-        print(results_df.to_string(index=False))
-    else:
-        print("No securities currently match the technical boundaries.")
+    print("\n📊 Final Scanner Results:\n", results_df)
