@@ -36,7 +36,7 @@ def calculate_rsi(series, period=14):
   return rsi.fillna(50)
 
 if st.sidebar.button("Run Scanner"):
-results = []
+  results = []
 
 with st.spinner("Fetching market data, indicators, and options chains..."):
 for symbol in watchlist:
