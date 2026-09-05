@@ -49,7 +49,8 @@ delta = series.diff()
 gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
 loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
 rs = gain / loss
-return 100 - (100 / (1 + rs))
+rsi = 100 - (100 / (1 + rs))
+return rsi.fillna(50) # Fallback to neutral 50 if NaN
 
 
 if st.sidebar.button("Run Scanner"):
@@ -59,11 +60,13 @@ with st.spinner(
 "Fetching market data, indicators, and options chains..."
 ):
 for symbol in watchlist:
+if not symbol:
+continue
 try:
 ticker = yf.Ticker(symbol)
 df = ticker.history(period=timeframe)
 
-if df.empty or len(df) < 30:
+if df.empty or len(df) < 25:
 continue
 
 if isinstance(df.columns, pd.MultiIndex):
@@ -77,7 +80,11 @@ latest = df.iloc[-1]
 current_price = float(latest["Close"])
 current_rsi = float(latest["RSI"])
 current_vol = float(latest["Volume"])
-avg_vol = float(latest["Vol_SMA_20"])
+avg_vol = (
+float(latest["Vol_SMA_20"])
+if pd.notna(latest["Vol_SMA_20"])
+else current_vol
+)
 
 is_rsi_match = current_rsi < rsi_threshold
 is_vol_match = current_vol > (volume_multiplier * avg_vol)
@@ -91,6 +98,7 @@ put_oi = 0
 pc_ratio = 0.0
 
 if include_options:
+try:
 exp_dates = ticker.options
 if exp_dates:
 nearest_expiry = exp_dates[0]
@@ -102,6 +110,9 @@ total_oi = call_oi + put_oi
 
 if call_oi > 0:
 pc_ratio = round(put_oi / call_oi, 2)
+except Exception:
+# If options fail to fetch, default gracefully instead of crashing
+pass
 
 if include_options and total_oi < min_total_oi:
 continue
@@ -118,8 +129,8 @@ results.append({
 "P/C Ratio": pc_ratio if include_options else "N/A",
 })
 
-except Exception as e:
-st.error(f"Error processing {symbol}: {e}")
+except Exception:
+continue
 
 if results:
 result_df = pd.DataFrame(results)
@@ -128,3 +139,4 @@ st.dataframe(result_df, use_container_width=True)
 else:
 st.warning(
 "No stocks matched your current criteria. Try loosening the filters."
+)
