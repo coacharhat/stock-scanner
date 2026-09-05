@@ -1,14 +1,3 @@
-
-
-Skip to content
-Using Gmail with screen readers
-Enable desktop notifications for Gmail.
-   OK  No thanks
-Conversations
-0% of 15 GB used
-Terms · Privacy · Program Policies
-Last account activity: 0 minutes ago
-Details
 import pandas as pd
 import streamlit as st
 import yfinance as yf
