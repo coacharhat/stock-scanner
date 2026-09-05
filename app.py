@@ -113,4 +113,3 @@ if st.sidebar.button("Run Scanner"):
     else:
         st.warning("No stocks matched your current criteria. Try loosening the filters.")
 App.py.txt
-Displaying App.py.txt.
