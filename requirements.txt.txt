@@ -1,4 +1,0 @@
-streamlit
-pandas
-pandas-ta
-yfinance
