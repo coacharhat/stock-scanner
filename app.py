@@ -10,39 +10,22 @@ layout="wide",
 )
 
 st.title("Interactive Stock & Options Screener")
-st.write(
-"Filter stocks based on RSI, volume, and options open interest data."
-)
+st.write("Filter stocks based on RSI, volume, and options open interest data.")
 
 # Sidebar for User Inputs
 st.sidebar.header("Scanner Parameters")
 
 default_watchlist = "AAPL, MSFT, GOOGL, AMZN, TSLA, NVDA, META, NFLX, AMD"
-tickers_input = st.sidebar.text_area(
-"Enter Tickers (comma-separated)", default_watchlist
-)
+tickers_input = st.sidebar.text_area("Enter Tickers (comma-separated)", default_watchlist)
 watchlist = [t.strip().upper() for t in tickers_input.split(",")]
 
-rsi_threshold = st.sidebar.slider(
-"Max RSI (Oversold Filter)", min_value=10, max_value=50, value=30, step=1
-)
-volume_multiplier = st.sidebar.slider(
-"Volume Multiplier vs 20-Day SMA",
-min_value=1.0,
-max_value=3.0,
-value=1.5,
-step=0.1,
-)
+rsi_threshold = st.sidebar.slider("Max RSI (Oversold Filter)", min_value=10, max_value=50, value=30, step=1)
+volume_multiplier = st.sidebar.slider("Volume Multiplier vs 20-Day SMA", min_value=1.0, max_value=3.0, value=1.5, step=0.1)
 timeframe = st.sidebar.selectbox("Historical Period", ["3mo", "6mo", "1y"], index=1)
 
 st.sidebar.subheader("Options Open Interest (Nearest Expiry)")
-include_options = st.sidebar.checkbox(
-"Fetch Options Data", value=True
-)
-min_total_oi = st.sidebar.number_input(
-"Min Total Open Interest", min_value=0, value=10000, step=5000
-)
-
+include_options = st.sidebar.checkbox("Fetch Options Data", value=True)
+min_total_oi = st.sidebar.number_input("Min Total Open Interest", min_value=0, value=10000, step=5000)
 
 def calculate_rsi(series, period=14):
 delta = series.diff()
@@ -52,13 +35,10 @@ rs = gain / loss
 rsi = 100 - (100 / (1 + rs))
 return rsi.fillna(50)
 
-
 if st.sidebar.button("Run Scanner"):
 results = []
 
-with st.spinner(
-"Fetching market data, indicators, and options chains..."
-):
+with st.spinner("Fetching market data, indicators, and options chains..."):
 for symbol in watchlist:
 if not symbol:
 continue
@@ -72,7 +52,6 @@ continue
 if isinstance(df.columns, pd.MultiIndex):
 df.columns = df.columns.get_level_values(0)
 
-# Calculate indicators natively
 df["RSI"] = calculate_rsi(df["Close"], period=14)
 df["Vol_SMA_20"] = df["Volume"].rolling(window=20).mean()
 
@@ -80,11 +59,7 @@ latest = df.iloc[-1]
 current_price = float(latest["Close"])
 current_rsi = float(latest["RSI"])
 current_vol = float(latest["Volume"])
-avg_vol = (
-float(latest["Vol_SMA_20"])
-if pd.notna(latest["Vol_SMA_20"])
-else current_vol
-)
+avg_vol = float(latest["Vol_SMA_20"]) if pd.notna(latest["Vol_SMA_20"]) else current_vol
 
 is_rsi_match = current_rsi < rsi_threshold
 is_vol_match = current_vol > (volume_multiplier * avg_vol)
@@ -111,7 +86,6 @@ total_oi = call_oi + put_oi
 if call_oi > 0:
 pc_ratio = round(put_oi / call_oi, 2)
 except Exception:
-# If options fail to fetch, default gracefully instead of crashing
 pass
 
 if include_options and total_oi < min_total_oi:
@@ -126,7 +100,7 @@ results.append({
 "Call OI": call_oi if include_options else "N/A",
 "Put OI": put_oi if include_options else "N/A",
 "Total OI": total_oi if include_options else "N/A",
-"P/C Ratio": pc_ratio if include_options else "N/A",
+"P/C Ratio": pc_ratio if include_options else "N/A"
 })
 
 except Exception:
@@ -137,6 +111,4 @@ result_df = pd.DataFrame(results)
 st.success(f"Found {len(result_df)} matching stocks!")
 st.dataframe(result_df, use_container_width=True)
 else:
-st.warning(
-"No stocks matched your current criteria. Try loosening the filters."
-)
+st.warning("No stocks matched your current criteria. Try loosening the filters.")
